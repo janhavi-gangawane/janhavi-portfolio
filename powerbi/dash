@@ -1,0 +1,92 @@
+Calendar = 
+ADDCOLUMNS(
+    CALENDAR(DATE(2024,1,1), DATE(2024,12,31)),
+    "Year", YEAR([Date]),
+    "MonthNo", MONTH([Date]),
+    "Month", FORMAT([Date], "MMM"),
+    "YearMonth", FORMAT([Date], "YYYY-MM")
+)
+Tickets Total = SUM(ops_data_sample[Tickets])
+
+SLA Breached Total = SUM(ops_data_sample[SLA_Breached])
+
+SLA % =
+VAR breaches = [SLA Breached Total]
+VAR tickets  = [Tickets Total]
+RETURN 
+    DIVIDE(tickets - breaches, tickets)  -- success rate
+AHT Avg =
+AVERAGE(ops_data_sample[Avg_Handle_Time])
+Tickets 7D =
+VAR LastDate = MAX('Calendar'[Date])
+RETURN
+CALCULATE([Tickets Total],
+    DATESINPERIOD('Calendar'[Date], LastDate, -7, DAY)
+)
+
+SLA % 7D =
+VAR LastDate = MAX('Calendar'[Date])
+VAR Tickets7 =
+    CALCULATE([Tickets Total], DATESINPERIOD('Calendar'[Date], LastDate, -7, DAY))
+VAR Breaches7 =
+    CALCULATE([SLA Breached Total], DATESINPERIOD('Calendar'[Date], LastDate, -7, DAY))
+RETURN DIVIDE(Tickets7 - Breaches7, Tickets7)
+
+AHT 7D MA =
+VAR LastDate = MAX('Calendar'[Date])
+RETURN
+CALCULATE([AHT Avg], DATESINPERIOD('Calendar'[Date], LastDate, -7, DAY))
+Tickets MTD = CALCULATE([Tickets Total], DATESMTD('Calendar'[Date]))
+Tickets Prev MTD =
+CALCULATE([Tickets Total], DATESMTD(DATEADD('Calendar'[Date], -1, MONTH)))
+
+Tickets MTD % Change =
+DIVIDE([Tickets MTD] - [Tickets Prev MTD], [Tickets Prev MTD])
+
+SLA % MTD =
+CALCULATE([SLA %], DATESMTD('Calendar'[Date]))
+SLA % Prev MTD =
+CALCULATE([SLA %], DATESMTD(DATEADD('Calendar'[Date], -1, MONTH)))
+
+SLA % MTD Δ (pp) = [SLA % MTD] - [SLA % Prev MTD]
+Metric, Target
+SLA %, 0.92
+AHT Avg, 7.5
+Target SLA % = MAXX(FILTER(Targets, Targets[Metric]="SLA %"), Targets[Target])
+Target AHT   = MAXX(FILTER(Targets, Targets[Metric]="AHT Avg"), Targets[Target])
+
+SLA % Variance (pp) = [SLA %] - [Target SLA %]
+AHT Variance (mins) = [Target AHT] - [AHT Avg]   -- positive is good if lower AHT better
+Tickets Last Week =
+VAR LastDate = MAX('Calendar'[Date])
+RETURN CALCULATE([Tickets Total],
+    DATESBETWEEN('Calendar'[Date], LastDate-6, LastDate))
+
+Tickets Prior Week =
+VAR LastDate = MAX('Calendar'[Date])
+RETURN CALCULATE([Tickets Total],
+    DATESBETWEEN('Calendar'[Date], LastDate-13, LastDate-7))
+
+Tickets WoW % = DIVIDE([Tickets Last Week]-[Tickets Prior Week], [Tickets Prior Week])
+
+SLA % Last Week =
+VAR LastDate = MAX('Calendar'[Date])
+VAR T = CALCULATE([Tickets Total], DATESBETWEEN('Calendar'[Date], LastDate-6, LastDate))
+VAR B = CALCULATE([SLA Breached Total], DATESBETWEEN('Calendar'[Date], LastDate-6, LastDate))
+RETURN DIVIDE(T-B,T)
+
+SLA % Prior Week =
+VAR LastDate = MAX('Calendar'[Date])
+VAR T = CALCULATE([Tickets Total], DATESBETWEEN('Calendar'[Date], LastDate-13, LastDate-7))
+VAR B = CALCULATE([SLA Breached Total], DATESBETWEEN('Calendar'[Date], LastDate-13, LastDate-7))
+RETURN DIVIDE(T-B,T)
+
+SLA % WoW (pp) = [SLA % Last Week] - [SLA % Prior Week]
+Arrow Up   = UNICHAR(9650)
+Arrow Down = UNICHAR(9660)
+
+SLA % Trend Icon =
+IF([SLA % WoW (pp)] >= 0, [Arrow Up], [Arrow Down])
+
+Tickets Trend Icon =
+IF([Tickets WoW %] >= 0, [Arrow Up], [Arrow Down])
